@@ -1,6 +1,6 @@
 # Introduction du projet
 
-Le marché des sirops est météo-sensibles, nos ventes sont impactées par les variations climatiques, en particulier sur la saison estivale. 
+Le marché des sirops est météo-sensibles, les ventes sont impactées par les variations climatiques, en particulier sur la saison estivale. 
 Tous les produits ne réagissent pas de la même façon, les ventes de certains produits sont beaucoup plus sensibles au pic de chaleur.
 
 # Objectif 
