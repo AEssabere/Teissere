@@ -1,0 +1,386 @@
+---
+title: "Analyse_statistique"
+output: pdf_document
+---
+
+#######################################################
+# Ouverture dans R des bases de donnees a disposition #
+#######################################################
+
+```{r}
+library("RColorBrewer")
+
+path = '~/Documents/' # chemin permettant d'acceder aux bases de donnees
+# base de donnees fournie par l'entreprise triee et separee en deux parties
+BDD_sirops = read.table(paste0(path,'data_sirops.csv'),header = TRUE, sep=',')
+BDD_identifiants = read.table(paste0(path,'identifiants_sirops.csv'),header = TRUE, sep=',')
+
+# base de donnees des temperatures moyennes du mois
+BDD_temperatures_TMM = read.table(paste0(path,'data_tmm.csv'),header = TRUE, sep=',')
+# base de donnees des temperatures moyennes maximales du mois
+BDD_temperatures_TXM = read.table(paste0(path,'data_txm.csv'),header = TRUE, sep=',')
+# base de donnees des temperatures maximales extremes du mois
+BDD_temperatures_TXX = read.table(paste0(path,'data_txx.csv'),header = TRUE, sep=',')
+```
+
+###########################################
+# Declaration et definition des fonctions #
+###########################################
+
+```{r}
+
+###################################################
+# Creation des moyennes de temperatures en France #
+###################################################
+
+moyennes_temperatures_France = function(BDD){
+  
+  ### Cette fonction permet de faire la moyenne des temperatures de la France
+  
+  ## Entrees : une base de donnees avec en lignes les mois et en colonnes les
+  ##            departements
+  ## Sorties : une matrice colonne avec en lignes les mois
+  
+  # recuperation des donnees meterologiques sans les noms des mois, ni des annees
+  temperatures = BDD[2:length(BDD)]
+  
+  # calcul des moyennes des temperatures par mois
+  moyennes = c()
+  for(l in 1:length(temperatures[,1])){
+    cpt = 0
+    somme = 0
+    
+    for(c in 1:length(temperatures)){
+      if ((temperatures[l,c]) != "Null"){
+        cpt = cpt + 1
+        somme = somme + as.integer(temperatures[l,c]) 
+      }
+    }
+    
+    if (somme == 0) { moyennes = c(moyennes, 0) }
+    else { moyennes = c(moyennes, somme/cpt) }
+  }
+  
+  moyennes = matrix(moyennes)
+  return(moyennes)
+}
+
+####################################################
+# Recuperation des dates de productions des sirops #
+####################################################
+
+dates = function(BDD){
+  
+  ### Cette fonction permet de recuperer, pour chaque sirop, les dates de debut 
+  ##    et de fin de periodes des ventes
+  
+  ## Entrees : une base de donnees avec en lignes les mois et en colonnes les sirops
+  ## Sorties : une matrice avec en lignes les sirops et 2 colonnes dont la 
+  ##            premiere correspond aux indices de debut des donnees et la 
+  ##            deuxieme correspond aux indices de fin des donnees
+  
+  trouve_deb = FALSE
+  trouve_fin = FALSE
+  deb = NULL
+  fin = NULL
+  dates = NULL
+  
+  for(c in 1:length(BDD[1,])){
+    
+    # recherche de la date de debut: on parcourt la base de donnees en partant 
+    # du debut et on recupere l'indice correspondant a la premiere valeur trouvee
+    for(l in 1:length(BDD[,1])){
+      if(BDD[l,c]!=0 & trouve_deb == FALSE){
+        deb = l
+        trouve_deb = TRUE
+        break
+      }
+    }
+    
+    # recherche de la date de fin: on parcourt la base de donnees en partant de
+    # la fin et on recupere l'indice correspondant a la premiere valeur trouvee
+    for(l in length(BDD[,1]):1){
+      if(BDD[l,c]!=0 & trouve_fin == FALSE){
+        fin = l
+        trouve_fin = TRUE
+        break
+      }
+    }
+
+    trouve_deb = FALSE
+    trouve_fin = FALSE
+    dates = rbind(dates,c(deb,fin))
+  }
+  
+  return(dates)
+}
+
+###############
+# Correlation #
+###############
+
+correlation_tri = function(sirops, temperatures, choix, identifiants){
+  
+  ### Cette fonction permet de calculer, pour chaque sirop, sa correlation avec
+  ###   la temperature   
+  
+  ## Entrees : > sirops: une base de donnees avec en lignes les mois et en colonnes les                              sirops 
+  ##           > temperatures: une base de donnees avec en lignes les mois et en 
+  ##                           colonnes les departements
+  ##           > choix: une chaine de caracteres permettant de preciser si on fait 
+  ##                    le calcul pour tous les sirops (choix = "par_sirop") 
+  ##                    ou pour un type (choix = "par_type")
+  ##           > identifiants : une base de donnees contenant les descriptifs des   
+  ##                            sirops associes a leur identifiant
+  ## Sorties : un tableau trie par ordre croissant de correlation
+  
+  
+  nb_colonnes = length(sirops[1,])
+  date_deb_prod = dates(sirops)[,1]
+  date_fin_prod = dates(sirops)[,2]
+  corr = c()
+  sirop = c()
+  
+  # pour chaque sirop, on recupere ses donnees comprises entre sa date de debut 
+  # et sa date de fin de vente ainsi que la meteo en France dans ce meme 
+  # intervalle de temps. Puis on calcule la correlation entre ces deux variables.
+  for(s in 1:nb_colonnes){
+    X = as.integer(sirops[date_deb_prod[s]:date_fin_prod[s],s])
+    Y = temperatures[(date_deb_prod[s]):(date_fin_prod[s])]
+    corr = rbind(corr, cor(X, Y))
+    sirop = c(sirop,s)
+  }
+  
+  # on trie le tableau obtenu par ordre croissant de correlation
+  rownames(corr) <- sirop
+  correlation <- corr[order(corr),]
+  nom_sirops = c()
+  
+ 
+  for(id in 1:length(correlation)){
+    
+    # on remplace chaque identifiant par les informations du sirop etudie
+    if (choix == "par_sirop"){
+      nom_sirops = c(nom_sirops,paste(identifiants[as.integer(names(correlation[id])),2], 
+                                      identifiants[as.integer(names(correlation[id])),3], 
+                                      identifiants[as.integer(names(correlation[id])),4])) 
+    }
+    
+    # on remplace chaque identifiant par le nom du type de sirop etudie
+    if(choix == "par_type"){
+      nom_sirops = c(nom_sirops,identifiants[as.integer(names(correlation[id]))])
+    }
+  }
+  
+  correlation = cbind(nom_sirops, correlation)
+  return(correlation)
+}
+
+correlation_graphes = function(sirops, temperatures, choix, identifiants){
+  
+  ### Cette fonction permet de tracer 2 diagrammes en barres. Celui de gauche 
+  ### represente les sirops les plus correles et celui de droite 
+  ### represente les moins correles
+  
+  ## Entrees : > sirops: une base de donnees avec en lignes les mois et en colonnes les                              sirops 
+  ##           > temperatures: une base de donnees avec en lignes les mois et en 
+  ##                           colonnes les departements
+  ##           > choix: une chaine de caracteres permettant de preciser si on fait 
+  ##                    le calcul pour tous les sirops (choix = "par_sirop") 
+  ##                    ou pour un type (choix = "par_type")
+  ##           > identifiants : une base de donnees contenant les descriptifs des   
+  ##                            sirops associes a leur identifiant
+  
+  # on recupere le tableau de correlation trie
+  corr = correlation_tri(sirops, temperatures, choix, identifiants)
+  
+  # on separe la fenetre en 2
+  close.screen(all = TRUE)
+  split.screen(1:2)
+  
+  correlation_forte = c()
+  
+  # on recupere l'indice a partir duquel les correlations sont superieures a 0.6
+  i=1
+  while(i <= length(corr[,1]) & corr[i,2] < 0.6){ i = i+1 }
+  
+  # on recupere, s'il y en a, toutes les correlations superieures a 0.6 et on
+  # les trace sur la partie gauche de la fenetre
+  correlation_forte = t(as.double(corr[i:length(corr[,1]),2]))
+  names = rownames(corr[i:length(corr[,1]),])
+  colnames(correlation_forte) = names
+  if(!is.null(correlation_forte)) {
+    screen(1) ; barplot(correlation_forte,beside = TRUE, main='diagramme des 
+fortes correlations \n', xlab = 'identifiants', ylab='correlation ventes/temperatures',
+col=brewer.pal(n = 11, name = "RdYlBu"))
+  }
+  
+  # on recupere l'indice de la derniere correlation inferieure a 0.2
+  j=1
+  while(j <= length(corr[,1])-1 & corr[j,2] < 0.2){ j = j+1 }
+  j = j-1
+  
+  # s'il y a des correlations inferieures a 0.2, on les recupere et on les trace
+  # sur la partie droite de la fenetre
+  if(j != 0){
+    correlation_faible = t(as.double(corr[1:j,2]))
+    names = rownames(corr[1:j,])
+    colnames(correlation_faible) = names
+    screen(2) ; barplot(correlation_faible,beside = TRUE, main='diagramme des
+faibles correlations \n', xlab = 'identifiants', ylab='correlation ventes/temperatures',
+col=brewer.pal(n = 11, name = "RdYlBu"))
+  }
+}
+
+correlation_par_type = function(sirops, BDD_identifiants, temperatures, type) {
+  
+  ### Cette fonction permet de calculer, pour chaque type de produit, sa 
+  ### correlation avec la temperature   
+  
+  ## Entrees : > sirops: une base de donnees avec en lignes les mois et en colonnes les                              sirops
+  ##           > identifiants : une base de donnees contenant les descriptifs des   
+  ##                            sirops associes a leur identifiant
+  ##           > temperatures: une base de donnees avec en lignes les mois et en 
+  ##                           colonnes les departements
+  ##           > type: une chaine de caracteres permettant de preciser quel type de 
+  ##                   produit on souhaite regarder: les sirops tries par 
+  ##                   parfum (type = "Parfum"), les sirops tries par gamme
+  ##                   (type = "Gamme") ou les sirops tries par marque
+  ##                   (type = "Marque")
+  ## Sorties: un tableau trie par ordre croissant de correlation
+  
+  # on recupere, en fonction du type choisis, la liste des differents noms des 
+  # types
+  if (type == "Parfum") { types = unique(BDD_identifiants$Parfum)}
+  
+  if (type == "Gamme") {types = unique(BDD_identifiants$Gamme)}
+  
+  if (type == "Marque") {
+    BDD_identifiants_copie = BDD_identifiants
+    for(i in 1:length(BDD_identifiants_copie[,1])){
+      if(BDD_identifiants_copie$Marque.Enseigne[i] != "T" & BDD_identifiants_copie$Marque.Enseigne[i] != "MDV"){
+        BDD_identifiants_copie$Marque.Enseigne[i] = "MDD"
+      }
+    }
+    types = unique(BDD_identifiants_copie$Marque.Enseigne)
+  }
+  
+  date_deb_prod = dates(sirops)[,1]
+  date_fin_prod = dates(sirops)[,2]
+  ventes = c()
+  
+  # pour chaque nom de chaque type:
+  for(sirop in types) {
+    
+    # on recupere l'ensemble des identifiants des sirops correspondant a ce nom.
+    if (type == "Parfum"){ID = BDD_identifiants$Identifiants[BDD_identifiants$Parfum == sirop]}
+    if (type == "Gamme") {ID = BDD_identifiants$Identifiants[BDD_identifiants$Gamme == sirop]}
+    if (type == "Marque") {ID = BDD_identifiants_copie$Identifiants[BDD_identifiants_copie$Marque.Enseigne == sirop]}
+    
+    # pour chaque identifiant selectionne, on recupere les donnees de ventes du
+    # sirop
+    ventes_type = c()
+    for(id in ID){ ventes_type = cbind(ventes_type, sirops[,id])}
+    
+    # on fait la moyenne par mois de toutes ces donnees
+    moyennes = c()
+    for(l in 1:length(ventes_type[,1])){
+      cpt = 0
+      somme = 0
+      
+      for(c in 1:length(ID)){
+        if (l >= date_deb_prod[ID[c]] & l <= date_fin_prod[ID[c]]){
+          cpt = cpt + 1
+          somme = somme + ventes_type[l,c]
+        }
+      }
+      
+      if (somme == 0){ moyennes = c(moyennes, 0) }
+      else{ moyennes = c(moyennes, somme/cpt) }
+    }
+    
+    ventes = cbind(ventes,moyennes)
+  }
+  
+  correlation_graphes(ventes, temperatures, "par_type", types)
+  return(correlation_tri(ventes, temperatures, "par_type", types))
+}
+
+#######################
+# Regression lineaire #
+#######################
+
+regression_lineaire_simple = function(sirop){
+  
+  ### Cette fonction permet de calculer et tracer:
+  ###   > une regression lineaire des ventes en fonction des temperatures 
+  ###   > un intervalle de confiance
+  ###   > un intervalle de prediction
+  
+  ## Entrees: sirop: un entier correspondant au numero du sirop a evaluer
+  
+  # Creation d'une base de donnees contenant les donnees du sirop choisi entre 
+  # sa date de debut et sa date de fin de ventes ainsi que la meteo en France
+  # dans ce meme intervalle de temps.
+  date_deb_prod = dates(sirops)[,1]
+  date_fin_prod = dates(sirops)[,2]
+  X = as.integer(sirops[(date_deb_prod[sirop]):(date_fin_prod[sirop]),sirop])
+  Y = temperatures[(date_deb_prod[sirop]):(date_fin_prod[sirop])]
+  df <- data.frame(X,Y)
+  
+  # calcul de la regression lineaire
+  regression <- lm(X~Y, data=df)
+  a <- coef(regression)[2]
+  b <- coef(regression)[1]
+  
+  # trace du graphe des temperatures en fonction des ventes de sirops
+  titre = paste('Graphe de la regression lineaire des ventes \n du sirop',
+                BDD_identifiants$Marque.Enseigne[BDD_identifiants$Identifiants==sirop], 
+                BDD_identifiants$Gamme[BDD_identifiants$Identifiants==sirop], 
+                BDD_identifiants$Parfum[BDD_identifiants$Identifiants==sirop])
+  plot(df$Y,df$X,xlab='moyennes temperatures France',ylab='ventes en litres', main=titre, pch=20)
+  
+  # calcul et trace de l'intervalle de confiance
+  pc = predict(regression, data.frame(temperatures),level=0.95,interval = "confidence")
+  points(temperatures, pc[,2], type='l',col="turquoise")
+  points(temperatures, pc[,3], type='l',col="turquoise")
+  
+  # calcul et trace de l'intervalle de prediction
+  pp = predict(regression,data.frame(temperatures),level = 0.95, interval = "prediction")
+  points(temperatures, pp[,2], type='l',col="pink")
+  points(temperatures, pp[,3], type='l',col="pink")
+
+  # trace de la regression lineaire
+  curve(a*x+b,add=T, col="black")
+  
+  # legende
+  legend("topleft", legend=c("regression lineaire", "intervalle de confiance", 
+                         "intervalle de prediction"), 
+         col=c("black", "turquoise", "pink"), lty=1)
+}
+```
+
+
+#######################
+# Programme principal #
+#######################
+
+```{r}
+# Recuperation des donnees de ventes des sirops sans les noms des mois, ni des annees
+sirops = BDD_sirops[2:length(BDD_sirops)]
+temperatures = moyennes_temperatures_France(BDD_temperatures_TMM)
+
+# tableau de correlation et diagramme par sirop
+tab_cor_par_sirop = data.frame(correlation_tri(sirops, temperatures, "par_sirop", BDD_identifiants))
+write.csv(tab_cor_par_sirop,"Correlations_sirops.csv")
+correlation_graphes(sirops, temperatures, "par_sirop", BDD_identifiants)
+
+# tableaux de correlation et diagrammes par type
+tab_cor_par_parfum = data.frame(correlation_par_type(sirops, BDD_identifiants, temperatures, "Parfum")); write.csv(tab_cor_par_parfum,"Correlations_parfums.csv")
+tab_cor_par_gamme = data.frame(correlation_par_type(sirops, BDD_identifiants, temperatures, "Gamme")); write.csv(tab_cor_par_gamme,"Correlations_gammes.csv")
+tab_cor_par_marque = data.frame(correlation_par_type(sirops, BDD_identifiants, temperatures, "Marque")); write.csv(tab_cor_par_marque,"Correlations_marques.csv")
+
+# regression lineaire
+close.screen(all = TRUE)
+regression_lineaire_simple(72)
+```
